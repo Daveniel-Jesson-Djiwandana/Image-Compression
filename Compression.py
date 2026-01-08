@@ -3,6 +3,29 @@ import numpy as np
 from PIL import Image
 import io
 
+@st.cache_data
+def get_svd(image):
+    image = image.convert("RGB")
+    A = np.array(image, dtype=float)
+    
+    # Pre-calculate SVD for each channel once
+    svd_results = []
+    for i in range(3):
+        U, S, Vt = np.linalg.svd(A[:, :, i], full_matrices=False)
+        svd_results.append((U, S, Vt))
+    return svd_results
+
+def reconstruct_image(svd_results, k):
+    reconstructed_channels = []
+    for U, S, Vt in svd_results:
+        # Just multiply the top k components
+        low_rank = U[:, :k] @ np.diag(S[:k]) @ Vt[:k, :]
+        reconstructed_channels.append(low_rank)
+    
+    compressed = np.stack(reconstructed_channels, axis=2)
+    compressed = np.clip(compressed, 0, 255).astype(np.uint8)
+    return Image.fromarray(compressed)
+
 # ---------- SVD COMPRESSION FUNCTION ----------
 def compress_channel(channel, k):
     U, S, Vt = np.linalg.svd(channel, full_matrices=False)
@@ -42,6 +65,9 @@ uploaded_file = st.file_uploader(
 if uploaded_file is not None:
     image = Image.open(uploaded_file)
 
+    with st.spinner("Analyzing image structure..."):
+        svd_data = get_svd(image)
+
     max_k = min(image.size)
     k = st.slider(
         "Compression level (k)",
@@ -59,8 +85,8 @@ if uploaded_file is not None:
 
     with col2:
         st.subheader(f"Compressed Image (k = {k})")
-        compressed_image = compress_image_color(image, k)
-        st.image(compressed_image, use_container_width=True)
+        compressed_image = reconstruct_image(svd_data, k)
+        st.image(compressed_image)
 
     # Download button
     buf = io.BytesIO()
