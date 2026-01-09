@@ -3,20 +3,23 @@ import numpy as np
 from PIL import Image
 import io
 
-# 1. Cached function: Uses the array to avoid "Unhashable" error
+# ---------- CACHED MATH ----------
+
 @st.cache_data
-def get_svd_data(img_array):
+def get_svd(img_array):
+    """SVD is slow, so we cache it using the numpy array as the key."""
     svd_results = []
-    # Loop through R, G, B channels
+    # Process R, G, and B
     for i in range(3):
         U, S, Vt = np.linalg.svd(img_array[:, :, i], full_matrices=False)
         svd_results.append((U, S, Vt))
     return svd_results
 
-def reconstruct(svd_results, k):
+def reconstruct_image(svd_results, k):
+    """This is fast matrix math, no need to cache."""
     reconstructed_channels = []
     for U, S, Vt in svd_results:
-        # Fast matrix multiplication
+        # Reconstruct: U_k * S_k * Vt_k
         low_rank = U[:, :k] @ np.diag(S[:k]) @ Vt[:k, :]
         reconstructed_channels.append(low_rank)
     
@@ -24,54 +27,41 @@ def reconstruct(svd_results, k):
     compressed = np.clip(compressed, 0, 255).astype(np.uint8)
     return Image.fromarray(compressed)
 
-# --- UI SETUP ---
-st.set_page_config(page_title="SVD Compressor", layout="wide")
-st.title("🖼️ Image Compressor")
+# ---------- STREAMLIT UI ----------
+st.set_page_config(page_title="SVD Image Compression", layout="wide")
 
-uploaded_file = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"])
+st.title("🖼️ Fast SVD Image Compression")
+st.write("Upload an image. The SVD calculation happens once, then the slider is instant.")
+
+uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
-    # Load image and ensure it's RGB
+    # Load and convert to array immediately
     image = Image.open(uploaded_file).convert("RGB")
-    
-    # CRITICAL: Resize if too large to prevent the "Oh no" crash (Memory limit)
-    if max(image.size) > 1200:
-        image.thumbnail((1200, 1200))
-    
     img_array = np.array(image, dtype=float)
 
-    # Calculation (Runs once)
-    with st.spinner("Calculating SVD..."):
-        try:
-            svd_data = get_svd_data(img_array)
-            
-            # Slider
-            max_k = len(svd_data[0][1])
-            k = st.slider("Select k", 1, max_k, min(100, max_k))
+    # Calculate SVD (this will only run once per unique image)
+    with st.spinner("Performing SVD math..."):
+        svd_data = get_svd(img_array)
 
-            # Display
-            col1, col2 = st.columns(2)
-            comp_img = reconstruct(svd_data, k)
+    # Slider logic
+    max_k = len(svd_data[0][1]) 
+    k = st.slider("Compression level (k)", 1, max_k, min(100, max_k))
 
-            with col1:
-                st.image(image, caption="Original", use_container_width=True)
-            with col2:
-                st.image(comp_img, caption=f"Compressed (k={k})", use_container_width=True)
+    col1, col2 = st.columns(2)
 
-            # Download
-            buf = io.BytesIO()
-            comp_img.save(buf, format="JPEG", quality=95)
-            byte_im = buf.getvalue()
+    # Reconstruct based on k
+    compressed_image = reconstruct_image(svd_data, k)
 
-            # 4. Display the new size so you can see it working
-            st.metric("Compressed File Size", f"{len(byte_im) / 1024:.2f} KB")
+    with col1:
+        st.subheader("Original")
+        st.image(image, use_container_width=True)
 
-            st.download_button(
-                label="📥 Download JPEG",
-                data=byte_im,
-                file_name=f"compressed_k_{k}.jpg",
-                mime="image/jpeg"
-)
+    with col2:
+        st.subheader(f"Compressed (k = {k})")
+        st.image(compressed_image, use_container_width=True)
 
-        except Exception as e:
-            st.error(f"Something went wrong: {e}")
+    # Download
+    buf = io.BytesIO()
+    compressed_image.save(buf, format="JPEG") # JPEG is smaller for downloads
+    st.download_button("📥 Download Result", buf.getvalue(), "compressed.jpg", "image/jpeg")
