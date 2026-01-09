@@ -61,7 +61,4 @@ if uploaded_file is not None:
         st.subheader(f"Compressed (k = {k})")
         st.image(compressed_image, use_container_width=True)
 
-    # Download
-    buf = io.BytesIO()
-    compressed_image.save(buf, format="JPEG") # JPEG is smaller for downloads
-    st.download_button("📥 Download Result", buf.getvalue(), "compressed.jpg", "image/jpeg")
+   
