@@ -28,9 +28,9 @@ def reconstruct_image(svd_results, k):
     return Image.fromarray(compressed)
 
 # ---------- STREAMLIT UI ----------
-st.set_page_config(page_title="SVD Image Compression", layout="wide")
+st.set_page_config(page_title="SVD Image Compressor", layout="wide")
 
-st.title("🖼️ Fast SVD Image Compression")
+st.title("🖼️ SVD Image Compressor")
 st.write("Upload an image. The SVD calculation happens once, then the slider is instant.")
 
 uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
